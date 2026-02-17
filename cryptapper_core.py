@@ -48,21 +48,13 @@ def parse_range(rng):
     return start, end
 
 
-def fetch_markets(start, end):
-    per_page = 250
-    start_page = (start - 1) // per_page + 1
-    end_page = (end - 1) // per_page + 1
-    markets = []
-    for page in range(start_page, end_page + 1):
-        url = (
-            f"{BASE_URL}/coins/markets?vs_currency=usd"
-            f"&order=market_cap_desc&per_page={per_page}&page={page}"
-            f"&sparkline=false"
-        )
-        markets.extend(_http_get_json(url))
-        time.sleep(0.3)
-    markets.sort(key=lambda x: x.get("market_cap_rank") or 10**9)
-    return markets[start - 1 : end]
+def fetch_market_page(page, per_page):
+    url = (
+        f"{BASE_URL}/coins/markets?vs_currency=usd"
+        f"&order=market_cap_desc&per_page={per_page}&page={page}"
+        f"&sparkline=false"
+    )
+    return _http_get_json(url)
 
 
 def fetch_coin_details(coin_id):
@@ -79,55 +71,80 @@ def fetch_coin_details(coin_id):
     return _http_get_json(url)
 
 
-def collect_coin_stats(start, end, pause=1.0):
-    markets = fetch_markets(start, end)
+def is_stablecoin(details):
+    categories = details.get("categories") or []
+    for category in categories:
+        if "stable" in str(category).lower():
+            return True
+    return False
+
+
+def collect_coin_stats(start, end, pause=1.0, per_page=250):
     rows = []
-    for item in markets:
-        coin_id = item.get("id")
-        base = {
-            "rank": item.get("market_cap_rank"),
-            "name": item.get("name"),
-            "symbol": item.get("symbol"),
-            "market_cap": item.get("market_cap"),
-        }
-        try:
-            details = fetch_coin_details(coin_id)
-        except Exception:
-            details = {}
+    non_stable_rank = 0
+    page = 1
+    while non_stable_rank < end:
+        markets = fetch_market_page(page, per_page)
+        if not markets:
+            break
+        for item in markets:
+            if non_stable_rank >= end:
+                break
+            coin_id = item.get("id")
+            try:
+                details = fetch_coin_details(coin_id)
+            except Exception:
+                details = {}
 
-        dev = details.get("developer_data") or {}
-        links = details.get("links") or {}
-        repos = links.get("repos_url") or {}
+            if is_stablecoin(details):
+                time.sleep(pause)
+                continue
 
-        def _first(items):
-            for item in items or []:
-                if item:
-                    return item
-            return None
+            non_stable_rank += 1
+            if non_stable_rank < start:
+                time.sleep(pause)
+                continue
 
-        homepage = _first(links.get("homepage"))
-        github = _first(repos.get("github"))
-        twitter_handle = links.get("twitter_screen_name")
-        twitter = f"https://twitter.com/{twitter_handle}" if twitter_handle else None
-        reddit = links.get("subreddit_url")
-        telegram_id = links.get("telegram_channel_identifier")
-        if telegram_id:
-            telegram = f"https://t.me/{telegram_id}"
-        else:
-            telegram = _first(links.get("chat_url"))
-
-        base.update(
-            {
-                "dev_stars": dev.get("stars"),
-                "homepage": homepage,
-                "github": github,
-                "twitter": twitter,
-                "reddit": reddit,
-                "telegram": telegram,
+            base = {
+                "rank": item.get("market_cap_rank"),
+                "name": item.get("name"),
+                "symbol": item.get("symbol"),
+                "market_cap": item.get("market_cap"),
             }
-        )
+            dev = details.get("developer_data") or {}
+            links = details.get("links") or {}
+            repos = links.get("repos_url") or {}
 
-        rows.append(base)
-        time.sleep(pause)
+            def _first(items):
+                for item in items or []:
+                    if item:
+                        return item
+                return None
+
+            homepage = _first(links.get("homepage"))
+            github = _first(repos.get("github"))
+            twitter_handle = links.get("twitter_screen_name")
+            twitter = f"https://twitter.com/{twitter_handle}" if twitter_handle else None
+            reddit = links.get("subreddit_url")
+            telegram_id = links.get("telegram_channel_identifier")
+            if telegram_id:
+                telegram = f"https://t.me/{telegram_id}"
+            else:
+                telegram = _first(links.get("chat_url"))
+
+            base.update(
+                {
+                    "dev_stars": dev.get("stars"),
+                    "homepage": homepage,
+                    "github": github,
+                    "twitter": twitter,
+                    "reddit": reddit,
+                    "telegram": telegram,
+                }
+            )
+
+            rows.append(base)
+            time.sleep(pause)
+        page += 1
 
     return rows

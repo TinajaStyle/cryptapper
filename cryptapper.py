@@ -8,7 +8,7 @@ from cryptapper_html import build_html
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate an HTML report of dev/community stats for top cryptocurrencies."
+        description="Generate an HTML report of dev/community stats for cryptocurrencies."
     )
     parser.add_argument("range", help="Range like 1-50")
     parser.add_argument(
