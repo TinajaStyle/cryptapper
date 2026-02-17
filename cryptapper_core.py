@@ -81,15 +81,21 @@ def is_stablecoin(details):
 
 def collect_coin_stats(start, end, pause=1.0, per_page=250):
     rows = []
-    non_stable_rank = 0
-    page = 1
-    while non_stable_rank < end:
+    start_page = (start - 1) // per_page + 1
+    end_page = (end - 1) // per_page + 1
+    offset_start = (start - 1) % per_page
+    offset_end = (end - 1) % per_page
+
+    for page in range(start_page, end_page + 1):
         markets = fetch_market_page(page, per_page)
         if not markets:
             break
-        for item in markets:
-            if non_stable_rank >= end:
-                break
+
+        page_start = offset_start if page == start_page else 0
+        page_end = offset_end if page == end_page else len(markets) - 1
+        page_slice = markets[page_start : page_end + 1]
+
+        for item in page_slice:
             coin_id = item.get("id")
             try:
                 details = fetch_coin_details(coin_id)
@@ -97,11 +103,6 @@ def collect_coin_stats(start, end, pause=1.0, per_page=250):
                 details = {}
 
             if is_stablecoin(details):
-                time.sleep(pause)
-                continue
-
-            non_stable_rank += 1
-            if non_stable_rank < start:
                 time.sleep(pause)
                 continue
 
@@ -145,6 +146,5 @@ def collect_coin_stats(start, end, pause=1.0, per_page=250):
 
             rows.append(base)
             time.sleep(pause)
-        page += 1
 
     return rows
