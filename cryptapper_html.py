@@ -39,25 +39,23 @@ def build_html(rows, start, end):
     lines.append("        <th>Name</th>")
     lines.append("        <th>Symbol</th>")
     lines.append("        <th class=\"num\">Market Cap (USD)</th>")
+    lines.append("        <th>Homepage</th>")
+    lines.append("        <th>GitHub</th>")
     lines.append("        <th class=\"num\">GitHub Stars</th>")
-    lines.append("        <th class=\"num\">GitHub Forks</th>")
-    lines.append("        <th class=\"num\">Issues (Open/Closed)</th>")
-    lines.append("        <th class=\"num\">PRs Merged</th>")
-    lines.append("        <th class=\"num\">Commits (4w)</th>")
-    lines.append("        <th class=\"num\">Reddit Subs</th>")
-    lines.append("        <th class=\"num\">Reddit Active 48h</th>")
-    lines.append("        <th class=\"num\">Telegram Users</th>")
+    lines.append("        <th>Twitter</th>")
+    lines.append("        <th>Reddit</th>")
+    lines.append("        <th>Telegram</th>")
     lines.append("      </tr>")
     lines.append("    </thead>")
     lines.append("    <tbody>")
 
-    for row in rows:
-        issues = "N/A"
-        open_issues = row.get("dev_open_issues")
-        closed_issues = row.get("dev_closed_issues")
-        if open_issues is not None or closed_issues is not None:
-            issues = f"{_fmt(open_issues)}/{_fmt(closed_issues)}"
+    def _link(url):
+        if not url:
+            return "N/A"
+        esc = html.escape(url)
+        return f"<a href=\"{esc}\" target=\"_blank\" rel=\"noopener\">{esc}</a>"
 
+    for row in rows:
         lines.append("      <tr>")
         lines.append(f"        <td class=\"num\">{html.escape(_fmt(row.get('rank')))}</td>")
         lines.append(f"        <td>{html.escape(_fmt(row.get('name')))}</td>")
@@ -67,28 +65,14 @@ def build_html(rows, start, end):
         lines.append(
             f"        <td class=\"num\">{html.escape(_fmt(row.get('market_cap')))}</td>"
         )
+        lines.append(f"        <td>{_link(row.get('homepage'))}</td>")
+        lines.append(f"        <td>{_link(row.get('github'))}</td>")
         lines.append(
             f"        <td class=\"num\">{html.escape(_fmt(row.get('dev_stars')))}</td>"
         )
-        lines.append(
-            f"        <td class=\"num\">{html.escape(_fmt(row.get('dev_forks')))}</td>"
-        )
-        lines.append(f"        <td class=\"num\">{html.escape(issues)}</td>")
-        lines.append(
-            f"        <td class=\"num\">{html.escape(_fmt(row.get('dev_prs_merged')))}</td>"
-        )
-        lines.append(
-            f"        <td class=\"num\">{html.escape(_fmt(row.get('dev_commits_4w')))}</td>"
-        )
-        lines.append(
-            f"        <td class=\"num\">{html.escape(_fmt(row.get('reddit_subscribers')))}</td>"
-        )
-        lines.append(
-            f"        <td class=\"num\">{html.escape(_fmt(row.get('reddit_active_48h')))}</td>"
-        )
-        lines.append(
-            f"        <td class=\"num\">{html.escape(_fmt(row.get('telegram_users')))}</td>"
-        )
+        lines.append(f"        <td>{_link(row.get('twitter'))}</td>")
+        lines.append(f"        <td>{_link(row.get('reddit'))}</td>")
+        lines.append(f"        <td>{_link(row.get('telegram'))}</td>")
         lines.append("      </tr>")
 
     lines.append("    </tbody>")

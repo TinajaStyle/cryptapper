@@ -70,7 +70,7 @@ def fetch_coin_details(coin_id):
         "localization": "false",
         "tickers": "false",
         "market_data": "false",
-        "community_data": "true",
+        "community_data": "false",
         "developer_data": "true",
         "sparkline": "false",
     }
@@ -96,26 +96,34 @@ def collect_coin_stats(start, end, pause=1.0):
             details = {}
 
         dev = details.get("developer_data") or {}
-        comm = details.get("community_data") or {}
+        links = details.get("links") or {}
+        repos = links.get("repos_url") or {}
 
-        total_issues = dev.get("total_issues")
-        closed_issues = dev.get("closed_issues")
-        if isinstance(total_issues, (int, float)) and isinstance(closed_issues, (int, float)):
-            open_issues = max(0, total_issues - closed_issues)
+        def _first(items):
+            for item in items or []:
+                if item:
+                    return item
+            return None
+
+        homepage = _first(links.get("homepage"))
+        github = _first(repos.get("github"))
+        twitter_handle = links.get("twitter_screen_name")
+        twitter = f"https://twitter.com/{twitter_handle}" if twitter_handle else None
+        reddit = links.get("subreddit_url")
+        telegram_id = links.get("telegram_channel_identifier")
+        if telegram_id:
+            telegram = f"https://t.me/{telegram_id}"
         else:
-            open_issues = None
+            telegram = _first(links.get("chat_url"))
 
         base.update(
             {
                 "dev_stars": dev.get("stars"),
-                "dev_forks": dev.get("forks"),
-                "dev_open_issues": open_issues,
-                "dev_closed_issues": closed_issues,
-                "dev_prs_merged": dev.get("pull_requests_merged"),
-                "dev_commits_4w": dev.get("commit_count_4_weeks"),
-                "reddit_subscribers": comm.get("reddit_subscribers"),
-                "reddit_active_48h": comm.get("reddit_accounts_active_48h"),
-                "telegram_users": comm.get("telegram_channel_user_count"),
+                "homepage": homepage,
+                "github": github,
+                "twitter": twitter,
+                "reddit": reddit,
+                "telegram": telegram,
             }
         )
 
