@@ -1,8 +1,10 @@
 import json
+import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from urllib.parse import urlparse
 
 BASE_URL = "https://api.coingecko.com/api/v3"
 USER_AGENT = "cryptapper/0.1 (+https://example.local)"
@@ -79,15 +81,48 @@ def is_stablecoin(details):
     return False
 
 
+def _repo_from_url(url):
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if parsed.netloc.lower() != "github.com":
+        return None
+    parts = [p for p in parsed.path.split("/") if p]
+    if len(parts) < 2:
+        return None
+    return f"{parts[0]}/{parts[1]}"
+
+
+def fetch_github_languages(repo, retries=2, pause=0.5):
+    if not repo:
+        return []
+    url = f"https://api.github.com/repos/{repo}/languages"
+    try:
+        data = _http_get_json(url, retries=retries, backoff=1.0)
+    except Exception as exc:
+        print(f"Warning: GitHub languages failed for {repo}: {exc}", file=sys.stderr)
+        return []
+    time.sleep(pause)
+    if not isinstance(data, dict):
+        return []
+    ordered = sorted(data.items(), key=lambda kv: kv[1], reverse=True)
+    return [name for name, _ in ordered]
+
+
 def collect_coin_stats(start, end, pause=1.0, per_page=250):
     rows = []
+    lang_cache = {}
     start_page = (start - 1) // per_page + 1
     end_page = (end - 1) // per_page + 1
     offset_start = (start - 1) % per_page
     offset_end = (end - 1) % per_page
 
     for page in range(start_page, end_page + 1):
-        markets = fetch_market_page(page, per_page)
+        try:
+            markets = fetch_market_page(page, per_page)
+        except Exception as exc:
+            print(f"Warning: market page {page} failed: {exc}", file=sys.stderr)
+            continue
         if not markets:
             break
 
@@ -133,9 +168,17 @@ def collect_coin_stats(start, end, pause=1.0, per_page=250):
             else:
                 telegram = _first(links.get("chat_url"))
 
+            repo = _repo_from_url(github)
+            if repo in lang_cache:
+                languages = lang_cache[repo]
+            else:
+                languages = fetch_github_languages(repo) if repo else []
+                lang_cache[repo] = languages
+
             base.update(
                 {
                     "dev_stars": dev.get("stars"),
+                    "github_languages": languages,
                     "homepage": homepage,
                     "github": github,
                     "twitter": twitter,

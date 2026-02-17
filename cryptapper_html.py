@@ -42,6 +42,7 @@ def build_html(rows, start, end):
     lines.append("        <th>Homepage</th>")
     lines.append("        <th>GitHub</th>")
     lines.append("        <th class=\"num\">GitHub Stars</th>")
+    lines.append("        <th>Languages</th>")
     lines.append("        <th>Twitter</th>")
     lines.append("        <th>Reddit</th>")
     lines.append("        <th>Telegram</th>")
@@ -70,6 +71,9 @@ def build_html(rows, start, end):
         lines.append(
             f"        <td class=\"num\">{html.escape(_fmt(row.get('dev_stars')))}</td>"
         )
+        languages = row.get("github_languages") or []
+        lang_text = ", ".join(languages[:3]) if languages else "N/A"
+        lines.append(f"        <td>{html.escape(lang_text)}</td>")
         lines.append(f"        <td>{_link(row.get('twitter'))}</td>")
         lines.append(f"        <td>{_link(row.get('reddit'))}</td>")
         lines.append(f"        <td>{_link(row.get('telegram'))}</td>")
