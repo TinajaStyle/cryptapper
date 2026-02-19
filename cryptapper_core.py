@@ -103,6 +103,12 @@ def fetch_github_languages(repo, retries=2, pause=0.5):
     url = f"https://api.github.com/repos/{repo}/languages"
     try:
         data = _http_get_json(url, retries=retries, backoff=1.0)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            _warn(f"GitHub repo not found: {repo}")
+            return None
+        _warn(f"GitHub languages failed for {repo}: {exc}")
+        return []
     except Exception as exc:
         _warn(f"GitHub languages failed for {repo}: {exc}")
         return []
@@ -113,9 +119,112 @@ def fetch_github_languages(repo, retries=2, pause=0.5):
     return [name for name, _ in ordered]
 
 
+def fetch_github_repo_info(repo, retries=2, pause=0.5):
+    if not repo:
+        return None
+    url = f"https://api.github.com/repos/{repo}"
+    try:
+        data = _http_get_json(url, retries=retries, backoff=1.0)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            _warn(f"GitHub repo not found: {repo}")
+            return None
+        _warn(f"GitHub repo info failed for {repo}: {exc}")
+        return None
+    except Exception as exc:
+        _warn(f"GitHub repo info failed for {repo}: {exc}")
+        return None
+    time.sleep(pause)
+    if not isinstance(data, dict):
+        return None
+    return {
+        "full_name": data.get("full_name"),
+        "html_url": data.get("html_url"),
+        "stars": data.get("stargazers_count"),
+    }
+
+
+def fetch_top_repo_for_user(user, retries=2, pause=0.5):
+    if not user:
+        return None, None
+    query = urllib.parse.quote(f"user:{user}")
+    url = (
+        f"https://api.github.com/search/repositories?q={query}"
+        f"&sort=stars&order=desc&per_page=1"
+    )
+    try:
+        data = _http_get_json(url, retries=retries, backoff=1.0)
+    except Exception as exc:
+        _warn(f"GitHub repo search failed for {user}: {exc}")
+        return None, None
+    time.sleep(pause)
+    items = data.get("items") if isinstance(data, dict) else None
+    if not items:
+        return None, None
+    item = items[0] or {}
+    return item.get("full_name"), item.get("html_url")
+
+
+def resolve_github_languages(github_url, lang_cache, user_cache, repo_cache):
+    if not github_url:
+        return [], github_url, None
+    parsed = urlparse(github_url)
+    if parsed.netloc.lower() != "github.com":
+        return [], github_url, None
+    parts = [p for p in parsed.path.split("/") if p]
+    if not parts:
+        return [], github_url, None
+
+    owner = parts[0]
+    repo = parts[1] if len(parts) >= 2 else None
+
+    def _fallback_to_user(user):
+        if user in user_cache:
+            top_repo, top_url = user_cache[user]
+        else:
+            top_repo, top_url = fetch_top_repo_for_user(user)
+            user_cache[user] = (top_repo, top_url)
+        if not top_repo:
+            return [], github_url, None
+        if top_repo in lang_cache:
+            languages = lang_cache[top_repo]
+        else:
+            languages = fetch_github_languages(top_repo) or []
+            lang_cache[top_repo] = languages
+        if top_repo in repo_cache:
+            info = repo_cache[top_repo]
+        else:
+            info = fetch_github_repo_info(top_repo)
+            repo_cache[top_repo] = info
+        resolved_url = (info or {}).get("html_url") or top_url or f"https://github.com/{top_repo}"
+        stars = (info or {}).get("stars")
+        return languages, resolved_url, stars
+
+    if not repo:
+        return _fallback_to_user(owner)
+
+    full_repo = f"{owner}/{repo}"
+    if full_repo in lang_cache:
+        languages = lang_cache[full_repo]
+    else:
+        languages = fetch_github_languages(full_repo)
+    if languages is None:
+        return _fallback_to_user(owner)
+    lang_cache[full_repo] = languages
+    if full_repo in repo_cache:
+        info = repo_cache[full_repo]
+    else:
+        info = fetch_github_repo_info(full_repo)
+        repo_cache[full_repo] = info
+    stars = (info or {}).get("stars")
+    return languages, github_url, stars
+
+
 def collect_coin_stats(start, end, pause=1.0, per_page=250):
     rows = []
     lang_cache = {}
+    user_cache = {}
+    repo_cache = {}
     start_page = (start - 1) // per_page + 1
     end_page = (end - 1) // per_page + 1
     offset_start = (start - 1) % per_page
@@ -180,19 +289,17 @@ def collect_coin_stats(start, end, pause=1.0, per_page=250):
             else:
                 telegram = _first(links.get("chat_url"))
 
-            repo = _repo_from_url(github)
-            if repo in lang_cache:
-                languages = lang_cache[repo]
-            else:
-                languages = fetch_github_languages(repo) if repo else []
-                lang_cache[repo] = languages
+            languages, github_resolved, gh_stars = resolve_github_languages(
+                github, lang_cache, user_cache, repo_cache
+            )
+            stars = gh_stars if gh_stars is not None else dev.get("stars")
 
             base.update(
                 {
-                    "dev_stars": dev.get("stars"),
+                    "dev_stars": stars,
                     "github_languages": languages,
                     "homepage": homepage,
-                    "github": github,
+                    "github": github_resolved,
                     "twitter": twitter,
                     "reddit": reddit,
                     "telegram": telegram,
