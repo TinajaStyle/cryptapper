@@ -41,4 +41,20 @@ For pull requests, include a concise summary, linked issues (if any), and an exa
 
 ## Configuration & Secrets
 
-The script uses public CoinGecko endpoints and does not require API keys. If you later add keys, use environment variables and document them in a `README` or `.env.example`. Never commit secrets.
+The script uses public CoinGecko endpoints and does not require API keys, but optional tokens improve rate limits:
+
+- `GITHUB_TOKEN` — GitHub API authentication.
+- `COINGECKO_API_KEY` — CoinGecko API key.
+- `COINGECKO_API_KEY_HEADER` — header name (default: `x-cg-demo-api-key`; set `x-cg-pro-api-key` for Pro).
+
+Never commit secrets.
+
+## GitHub Push Checklist
+
+- Ensure `README.md` and `AGENTS.md` are up to date.
+- Run a quick smoke test: `python3 cryptapper.py 1-5 --out /tmp/cryptapper_test.html`.
+- Commit with a clear message, then push:
+  - `git status`
+  - `git add -A`
+  - `git commit -m "Update cryptapper report generation"`
+  - `git push`
