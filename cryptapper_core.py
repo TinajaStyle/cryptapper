@@ -39,6 +39,10 @@ def _http_get_json(url, retries=3, backoff=1.0):
     raise ApiError(f"Request failed: {last_err}")
 
 
+def _warn(message):
+    print(f"Warning: {message}", file=sys.stderr)
+
+
 def parse_range(rng):
     if "-" not in rng:
         raise ValueError("Range must be in the form START-END, e.g. 1-50")
@@ -100,7 +104,7 @@ def fetch_github_languages(repo, retries=2, pause=0.5):
     try:
         data = _http_get_json(url, retries=retries, backoff=1.0)
     except Exception as exc:
-        print(f"Warning: GitHub languages failed for {repo}: {exc}", file=sys.stderr)
+        _warn(f"GitHub languages failed for {repo}: {exc}")
         return []
     time.sleep(pause)
     if not isinstance(data, dict):
@@ -121,7 +125,7 @@ def collect_coin_stats(start, end, pause=1.0, per_page=250):
         try:
             markets = fetch_market_page(page, per_page)
         except Exception as exc:
-            print(f"Warning: market page {page} failed: {exc}", file=sys.stderr)
+            _warn(f"market page {page} failed: {exc}")
             continue
         if not markets:
             break
@@ -134,7 +138,15 @@ def collect_coin_stats(start, end, pause=1.0, per_page=250):
             coin_id = item.get("id")
             try:
                 details = fetch_coin_details(coin_id)
-            except Exception:
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    _warn(f"coin details not found for {coin_id} (404)")
+                    details = {}
+                else:
+                    _warn(f"coin details failed for {coin_id}: {exc}")
+                    details = {}
+            except Exception as exc:
+                _warn(f"coin details failed for {coin_id}: {exc}")
                 details = {}
 
             if is_stablecoin(details):
