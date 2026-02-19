@@ -1,13 +1,18 @@
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from functools import lru_cache
 from urllib.parse import urlparse
 
 BASE_URL = "https://api.coingecko.com/api/v3"
 USER_AGENT = "cryptapper/0.1 (+https://example.local)"
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY")
+COINGECKO_API_KEY_HEADER = os.getenv("COINGECKO_API_KEY_HEADER", "x-cg-demo-api-key")
 
 
 class ApiError(RuntimeError):
@@ -18,7 +23,7 @@ def _http_get_json(url, retries=3, backoff=1.0):
     last_err = None
     for attempt in range(retries):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            req = urllib.request.Request(url, headers=_build_headers(url))
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
@@ -37,6 +42,21 @@ def _http_get_json(url, retries=3, backoff=1.0):
                 continue
             raise
     raise ApiError(f"Request failed: {last_err}")
+
+
+@lru_cache(maxsize=64)
+def _build_headers(url):
+    headers = {"User-Agent": USER_AGENT}
+    host = urlparse(url).netloc.lower()
+
+    if (host.endswith("github.com") or host.endswith("api.github.com")) and GITHUB_TOKEN:
+        headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        headers["Accept"] = "application/vnd.github+json"
+
+    if (host.endswith("coingecko.com") or host.endswith("api.coingecko.com")) and COINGECKO_API_KEY:
+        headers[COINGECKO_API_KEY_HEADER] = COINGECKO_API_KEY
+
+    return headers
 
 
 def _warn(message):
