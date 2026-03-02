@@ -14,9 +14,11 @@ If the project grows, keep code under `src/` and tests under `tests/`.
 
 Key commands:
 
-- `python3 cryptapper.py 1-50` — fetch top 50 by market cap and write `cryptapper_1-50.html`.
-- `python3 cryptapper.py 1-50 --out report.html` — write to a custom filename.
+- `python3 cryptapper.py 1-50` — fetch top 50 by market cap and store in `cryptapper.db`.
+- `python3 cryptapper.py 1-50 --report` — generate HTML from stored data.
+- `python3 cryptapper.py 1-50 --report --out report.html` — write to a custom filename.
 - `python3 cryptapper.py 1-50 --pause 1.5` — slow down detail requests to reduce rate-limit risk.
+- `python3 cryptapper.py 1-50 --scanned-ranges` — list stored scan ranges.
 
 ## Coding Style & Naming Conventions
 

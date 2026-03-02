@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import sys
 import time
 import urllib.error
@@ -9,7 +10,7 @@ from functools import lru_cache
 from urllib.parse import urlparse
 
 BASE_URL = "https://api.coingecko.com/api/v3"
-USER_AGENT = "cryptapper/0.1 (+https://example.local)"
+USER_AGENT = "cryptapper/0.1 (+https://github.com/TinajaStyle/cryptapper)"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY")
 COINGECKO_API_KEY_HEADER = os.getenv("COINGECKO_API_KEY_HEADER", "x-cg-demo-api-key")
@@ -330,3 +331,180 @@ def collect_coin_stats(start, end, pause=1.0, per_page=250):
             time.sleep(pause)
 
     return rows
+
+
+def init_db(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                start_rank INTEGER NOT NULL,
+                end_rank INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS coins (
+                run_id INTEGER NOT NULL,
+                rank INTEGER NOT NULL,
+                name TEXT,
+                symbol TEXT,
+                market_cap REAL,
+                dev_stars INTEGER,
+                github_languages TEXT,
+                homepage TEXT,
+                github TEXT,
+                twitter TEXT,
+                reddit TEXT,
+                telegram TEXT,
+                FOREIGN KEY (run_id) REFERENCES runs(id)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_range ON runs(start_rank, end_rank)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_coins_rank ON coins(rank)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_coins_run ON coins(run_id)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_scan(db_path, start, end, rows):
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO runs (start_rank, end_rank) VALUES (?, ?)",
+            (start, end),
+        )
+        run_id = cur.lastrowid
+        payload = []
+        for row in rows:
+            payload.append(
+                (
+                    run_id,
+                    row.get("rank"),
+                    row.get("name"),
+                    row.get("symbol"),
+                    row.get("market_cap"),
+                    row.get("dev_stars"),
+                    json.dumps(row.get("github_languages") or []),
+                    row.get("homepage"),
+                    row.get("github"),
+                    row.get("twitter"),
+                    row.get("reddit"),
+                    row.get("telegram"),
+                )
+            )
+        cur.executemany(
+            """
+            INSERT INTO coins (
+                run_id, rank, name, symbol, market_cap, dev_stars, github_languages,
+                homepage, github, twitter, reddit, telegram
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            payload,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_scanned_ranges(db_path):
+    init_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT start_rank, end_rank, created_at, id FROM runs ORDER BY start_rank, end_rank"
+        )
+        return cur.fetchall()
+    finally:
+        conn.close()
+
+
+def _select_covering_runs(runs, start, end):
+    current = start
+    selected = []
+    for run_start, run_end, created_at, run_id in runs:
+        if run_end < current:
+            continue
+        if run_start > current:
+            break
+        selected.append((run_start, run_end, created_at, run_id))
+        if run_end > current:
+            current = run_end
+        if current >= end:
+            break
+    if current < end:
+        return []
+    return selected
+
+
+def load_report_rows(db_path, start, end):
+    runs = list_scanned_ranges(db_path)
+    if not runs:
+        return [], []
+    covering = _select_covering_runs(runs, start, end)
+    if not covering:
+        return [], runs
+
+    run_ids = [r[3] for r in covering]
+    placeholders = ",".join("?" for _ in run_ids)
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT run_id, rank, name, symbol, market_cap, dev_stars, github_languages,
+                   homepage, github, twitter, reddit, telegram
+            FROM coins
+            WHERE rank BETWEEN ? AND ?
+              AND run_id IN ({placeholders})
+            ORDER BY rank ASC, run_id DESC
+            """,
+            [start, end] + run_ids,
+        )
+        rows = []
+        seen = set()
+        for record in cur.fetchall():
+            (
+                _run_id,
+                rank,
+                name,
+                symbol,
+                market_cap,
+                dev_stars,
+                github_languages,
+                homepage,
+                github,
+                twitter,
+                reddit,
+                telegram,
+            ) = record
+            if rank in seen:
+                continue
+            seen.add(rank)
+            rows.append(
+                {
+                    "rank": rank,
+                    "name": name,
+                    "symbol": symbol,
+                    "market_cap": market_cap,
+                    "dev_stars": dev_stars,
+                    "github_languages": json.loads(github_languages or "[]"),
+                    "homepage": homepage,
+                    "github": github,
+                    "twitter": twitter,
+                    "reddit": reddit,
+                    "telegram": telegram,
+                }
+            )
+        return rows, covering
+    finally:
+        conn.close()
