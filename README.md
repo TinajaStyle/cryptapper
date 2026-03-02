@@ -11,21 +11,21 @@ Small Python CLI that pulls CoinGecko market-cap data, enriches it with develope
 Scan into SQLite:
 
 ```bash
-python3 cryptapper.py 1-50
+python3 cryptapper.py scan 1-50
 ```
 
 Generate HTML from stored data:
 
 ```bash
-python3 cryptapper.py 1-50 --report
+python3 cryptapper.py report 1-50
 ```
 
 Options:
 
 ```bash
-python3 cryptapper.py 1-50 --report --out report.html
-python3 cryptapper.py 20-60 --pause 1.5
-python3 cryptapper.py 1-50 --scanned-ranges
+python3 cryptapper.py report 1-50 --out report.html
+python3 cryptapper.py scan 20-60 --pause 1.5
+python3 cryptapper.py scanned-ranges
 ```
 
 Notes:

@@ -16,36 +16,36 @@ def main():
     parser = argparse.ArgumentParser(
         description="Scan crypto stats into SQLite or generate an HTML report."
     )
-    parser.add_argument("range", help="Range like 1-50")
     parser.add_argument(
         "--db",
         default="cryptapper.db",
         help="SQLite database path (default: cryptapper.db)",
     )
-    parser.add_argument(
-        "--report",
-        action="store_true",
-        help="Generate HTML report from stored database data",
-    )
-    parser.add_argument(
-        "--scanned-ranges",
-        action="store_true",
-        help="Print scanned ranges stored in the database and exit",
-    )
-    parser.add_argument(
-        "--out",
-        default=None,
-        help="Output HTML file (default: cryptapper_START-END.html)",
-    )
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    scan_parser = subparsers.add_parser("scan", help="Fetch data and store in SQLite")
+    scan_parser.add_argument("range", help="Range like 1-50")
+    scan_parser.add_argument(
         "--pause",
         type=float,
         default=1.0,
         help="Seconds to pause between coin detail requests (default: 1.0)",
     )
+
+    report_parser = subparsers.add_parser("report", help="Generate HTML from SQLite")
+    report_parser.add_argument("range", help="Range like 1-50")
+    report_parser.add_argument(
+        "--out",
+        default=None,
+        help="Output HTML file (default: cryptapper_START-END.html)",
+    )
+
+    subparsers.add_parser(
+        "scanned-ranges", help="Print scanned ranges stored in the database and exit"
+    )
     args = parser.parse_args()
 
-    if args.scanned_ranges:
+    if args.command == "scanned-ranges":
         ranges = list_scanned_ranges(args.db)
         if not ranges:
             print("No scanned ranges found.")
@@ -54,13 +54,12 @@ def main():
             print(f"{start_rank}-{end_rank} (run {run_id}, {created_at})")
         return 0
 
-    try:
-        start, end = parse_range(args.range)
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 2
-
-    if args.report:
+    if args.command == "report":
+        try:
+            start, end = parse_range(args.range)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
         rows, _covering = load_report_rows(args.db, start, end)
         if not rows:
             print("Error: requested range not available in database.", file=sys.stderr)
@@ -81,15 +80,24 @@ def main():
         print(f"Wrote {out_path}")
         return 0
 
-    try:
-        rows = collect_coin_stats(start, end, pause=args.pause)
-    except Exception as exc:
-        print(f"Error fetching data: {exc}", file=sys.stderr)
-        return 1
+    if args.command == "scan":
+        try:
+            start, end = parse_range(args.range)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+        try:
+            rows = collect_coin_stats(start, end, pause=args.pause)
+        except Exception as exc:
+            print(f"Error fetching data: {exc}", file=sys.stderr)
+            return 1
 
-    save_scan(args.db, start, end, rows)
-    print(f"Saved {start}-{end} to {args.db}")
-    return 0
+        save_scan(args.db, start, end, rows)
+        print(f"Saved {start}-{end} to {args.db}")
+        return 0
+
+    print("Error: unknown command", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":
