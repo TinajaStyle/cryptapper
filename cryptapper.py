@@ -39,6 +39,11 @@ def main():
         default=None,
         help="Output HTML file (default: cryptapper_START-END.html)",
     )
+    report_parser.add_argument(
+        "--ignore-na",
+        action="store_true",
+        help="Exclude entries without a GitHub link",
+    )
 
     subparsers.add_parser(
         "scanned-ranges", help="Print scanned ranges stored in the database and exit"
@@ -72,6 +77,9 @@ def main():
                         file=sys.stderr,
                     )
             return 1
+
+        if args.ignore_na:
+            rows = [row for row in rows if row.get("github")]
 
         out_path = args.out or f"cryptapper_{start}-{end}.html"
         html = build_html(rows, start, end)
